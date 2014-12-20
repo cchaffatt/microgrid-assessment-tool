@@ -1,0 +1,92 @@
+'Program: Carl Fiddlings(CR1000)
+'Programmer: Carl Chaffatt
+'Objective: Sending this program the Atrium Power datalogger to receive data 
+'from another datalogger(datalogger communication)
+
+'Declaring Variables and Units
+Public BattV, Temp_C, Pow_Table, Power_Temp_C, Env_Temp_Table, mechCode, envirCode, getMech(3), getEnvir(6), modCode, modBus(3)
+Public Veris, roofCode, getRoof(5), Roof_Table, Roof_Field, httpResponse
+
+
+Dim SocketEnv As Long
+Public SocketMoxa As Long
+
+Units BattV = Volts
+Units Temp_C = Deg C
+
+
+Alias modBus(1) = Energy
+Alias modBus(3) = Power
+Alias getEnvir(1) = Env_T_1
+Alias getEnvir(2) = Env_T_2
+Alias getEnvir(3) = Env_T_3
+Alias getEnvir(4) = Env_T_4
+Alias getEnvir(5) = Env_T_5
+Alias getEnvir(6) = Env_T_6
+
+Alias Power_Temp_C = Pow_T_1
+
+
+'Implementing a Data Table for temperature using datalogger Power
+DataTable(Pow_Table, True, -1)
+	DataInterval(0,10,Sec,10)
+	Sample(1, Power_Temp_C, FP2)
+EndTable
+
+'Table for Veris meter measuring power & energy from AC unit
+DataTable(Veris, True, -1)
+  DataInterval(0,10,Sec,10)
+  Sample(3,modBus(),FP2)
+EndTable
+
+'Table for gathering data from Environmental CR1000 10.0.1.72
+DataTable(Env_Temp_Table, True, -1)
+	DataInterval(0,10,Sec,10)
+	Sample(6, getEnvir(), FP2)
+EndTable
+
+'Table for gathering data from CR200 via Moxa Server
+DataTable(Roof_Table, True, -1)
+	DataInterval(0,10,Sec,10)
+	Sample(5, getRoof(), FP2)
+EndTable
+   
+'Main Program
+BeginProg
+  'Opening a connection between AC unit and the power datalogger Com1
+  SerialOpen (Com1, 9600, 0, 0, 10000)
+	Scan(5,Sec,1,0)
+		'Default Datalogger Battery Voltage measurement BattV
+		Battery(BattV)
+		
+		'Type T (copper-constantan) Thermocoupl-e measurements Temp_C
+		PanelTemp (Temp_C, 250)
+		TCDiff(Power_Temp_C, 1,mV2_5C, 8, TypeT, Temp_C, True, 0, _60Hz, 1, 0)
+    
+    'Socket is the exact location of a remote datalogger's position. 
+    'If we use an ip address and other parameters dataloggers can communicate
+    'wirelessly
+    SocketEnv = TCPOpen("10.0.1.72", 6785, 0)
+    SocketMoxa = TCPOpen("10.0.1.100", 99,0)
+    
+		'Getting data from the Mechanical Room datalogger using a physical connection.
+		 GetVariables(mechCode, Com4, 0, 1, 0, 0, "Public", "Temp_C()",  getMech(), 3)
+		
+		'Getting data from the Environment Room datalogger using a wireless connection.
+		 GetVariables(envirCode, SocketEnv, 0, 72, 0, 0, "Env_Temp_Table", "Temp_C()", getEnvir(), 6)
+		 
+		 'Get data from CR200 on roof via Moxa Serial Server
+		 GetVariables(roofCode, SocketMoxa, 0,1,0,0, "Roof_Table", "Roof_Field()", getRoof(),5)
+		 
+		'Get ModBus data from Veris device monitoring AC unit starting at address 257 (energy) and reaching 259 (power)
+		'The data type for each register is a 32 bit float with 2 byte registers reversed....confusing!
+		
+		 ModBusMaster(modCode, Com1, 9600, 1, 3, modBus(), 257, 3, 3, 50,2)
+		
+	 'Call Data Tables and Store Data
+		CallTable(Pow_Table)
+		CallTable(Veris)
+		CallTable(Env_Temp_Table)
+		CallTable(Roof_Table)
+	NextScan
+EndProg

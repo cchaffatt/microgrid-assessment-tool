@@ -1,0 +1,42 @@
+Microgrid Assessment Tool
+--------------------------
+As a firmware programmer at Smart Resource Institute I coded these programs
+in CRBasic for a device called a datalogger.
+
+
+CR1000                                   ( https://www.campbellsci.com/cr1000 )
+-------
+The datalogger; specifically, Campbell Scientific's CR1000, was used as a hub
+device that connected to other devices. Together the devices quantified resources
+such as energy collected from solar panels, speed and direction of wind, temperatures
+in room locations, water expenditure, and electicity consumption.
+
+Since we had solar panels on the roof, we often gave back to the grid and burlington
+electric had to pay us. So it was amusing to see the challenging energy forces and
+being able to see the results concretely.
+
+
+Purpose / Product
+------------------
+The product of these programs created the Microgrid Assessment Tool which is a solution
+for clients to see all resource exhaustion on a single dashboard: catering to the idea
+of energy management. This work primarily supplied backend data that was presented using
+a series of visual graphical displays.
+
+
+Targets
+-------
+This product targeted and would be the most useful to huge companies that have a hard time
+keeping track of resources across many chains. Also, it would be valuable to industries that
+disburse large amounts of resource as apart of business. For this reason, ECHO Lake Aquarium
+Science center was one of our pitches.
+
+
+MGA's Rollout
+--------------
+The Microgrid Assessment Tool was administered in North Carolina with the new medical transport
+company MED-1. This company is a first reponse call to disasters and they bring out tractor
+trailers with solar panel on the roof to the scene: bringing medical attention to victims instead
+of having to ship them to a far away hospital.
+
+The tool was also featured at the Democratic National Convention.

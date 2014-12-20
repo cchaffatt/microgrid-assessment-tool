@@ -1,0 +1,704 @@
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Program: microGridAssessmentTool                                                    '
+'Programmer: Carl Chaffatt & Michael Swanson                                         '
+'Device(s): CR1000 microGridAssessment                                               '
+'Network: (Device connectivity via internet[url(s)])                                 '
+'Objective: Creating a program that utilizes various sensors: Apogee Pyranometer/Lp02'
+'           Thermistor/TC, Shark 200 meter, eGauge, CH200 (Smart Charge Controller), ' 
+'           Vaisala and Xantrex BM                                                   '
+'                                                                                    '                                              
+'Instructions: Change XMLQueryString, scanRate, numOfLoc, numOfVar and locations()   '
+'              based on the the specifications of pelican eGauge and situationl fact-'
+'              ors.                                                                   '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+'**********************************
+'**********************************
+'*     Declaring variables       **
+'**********************************
+'**********************************
+
+''''''''''''''''''''''''
+''''''''''''''''''''''''
+''     Constants     '''
+''''''''''''''''''''''''
+''''''''''''''''''''''''
+Const scanRate = 2   'Setting the scan rate interval of the program. Its units will be determined at the function beginprog
+
+''*******************
+''Device: eGauge    *
+''*******************
+'String constants AND XMLParse parameter constants
+Const XMLQueryString = "http://10.0.1.100/cgi-bin/egauge?params/tot&v1&inst" 'eGauge API Instantaneous with parameter specifications
+'XMLParse max settings
+Const XML_MAX_DEPTH = 5  'CSI's XML format has a maximum nexting depth of 4 elements.  So give it one more than is needed in memory.
+Const XML_MAX_NAMESPACES = 1  'SOAP standard usually has two name spaces minimum.  The ones we are looking at only have one (the default namespace).
+'indexing constants
+Const numOfLoc = 12 'Number of locations
+Const numOfVar = 25 'Number of variables
+'XMLParse progress codes 
+Const XML_TO_MANY_NAMESPACES = -3 ' To many name space declarations encountered while parsing an element
+Const XML_NESTED_TO_DEEP = -2 ' To many nexted XML elements
+Const XML_SYNTAX_ERROR_OR_FAILED = -1 ' XML syntax error or XMLParse failed
+Const XML_UNRECOGNIZED_ERROR_CONDITION = 0 'Unrecognized error condition
+Const XML_START = 1 'Start of XML element
+Const XML_ATTRIBUTE_READ = 2 ' XML attribute read.
+Const XML_END_OF_ELEMENT = 3 ' End of XML element
+Const XML_END_OF_DOCUMENT = 4 ' END of XML document encountered.  The document has been read/parsed successfully.
+
+''*******************
+''Device: Apogee    *
+''*******************
+'None
+
+''*******************
+''Device: Lp02      *
+''*******************
+'None
+
+''*******************
+''Device: Vaisala   *
+''*******************
+'None
+
+''*******************
+''Device: Xantrex   *
+''*******************
+'None
+
+''*******************
+''Device: Shark     *
+''*******************
+'None
+
+''**********************
+''Device: Thermistor/TC*
+''**********************
+'None
+
+''*******************
+''Device: CH200     *
+''*******************
+'None
+
+'************************************************************************************************************************************
+
+''''''''''''''''''''''''
+''''''''''''''''''''''''
+'' Public Variables  '''
+''''''''''''''''''''''''
+''''''''''''''''''''''''
+Public batt_volt, PTemp, genRunTime
+
+''*******************
+''Device: eGauge    *
+''*******************
+Public HTTPHeader As String * 100 'HTTPget Response String
+'XMLParse alocated public variables
+Public xml_response_code 'used to see what XMLParse is returning
+Public xml_attribute_name As String * 50
+Public xml_attribute_namespace As String * 100
+Public xml_content As String * 1000   
+Public xml_element_namespace As String * 30
+Public xml_element_name As String * 30
+Public xml_value As String * 45
+Public socket
+Public eGaugeDat(numOfVar)
+Public index
+
+''*******************
+''Device: Apogee    *
+''*******************
+'Public Apogee_Wm2
+
+''*******************
+''Device: Lp02      *
+''*******************
+Public LP02_Wm2
+
+''*******************
+''Device: Vaisala   *
+''*******************
+Public WXT520(7)
+
+''*******************
+''Device: Xantrex   *
+''*******************
+Public inXanString As String * 1000
+
+''*******************
+''Device: Shark     *
+''*******************
+Public sharkPower(2), sharkEnergyReceived(2) As Long, sharkEnergyDelivered(2) As Long
+Public sharkPowerFactor(2), sharkFreq(2), sharkV(3), sharkI(3), sharkTHD(2), sharkHarmonic(20)
+
+''**********************
+''Device: Thermistor/TC*
+''**********************
+Public microTemp(2)
+
+''*******************
+''Device: CH200     *
+''*******************
+'Variables to hold the words for charge state, charge source, and check battery.
+Public CH200_M0(9) 'Last three states are interpreted and describe by below 
+Public ChargeState As String 
+Public ChargeSource As String 
+Public CheckBattery As String 
+
+
+'~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+'''''''''''''''''
+'''''''''''''''''
+'' Dim & Units ''
+'''''''''''''''''
+'''''''''''''''''
+Dim scanTime  'amount of time the program has been scanning
+
+''*******************
+''Device: eGauge    *
+''*******************
+'Dimensional-array variables for tables
+Dim location(numOfLoc) As String * 100 = {"Circuit1", "Circuit2", "Circuit3", "Circuit4", "Circuit5", "Circuit6", _
+"Circuit7", "Circuit8", "Circuit9", "Circuit10", "Circuit11", "Circuit12"} 
+Dim energy(numOfLoc), power(numOfLoc), time_stamp(numOfLoc), ts
+
+''*******************
+''Device: Apogee    *
+''*******************
+'None
+
+''*******************
+''Device: Lp02      *
+''*******************
+'None
+
+''*******************
+''Device: Vaisala   *
+''*******************
+Units WindDir = Degrees
+Units WindSpd = m/s
+Units AirTemp = Celcius
+Units RelHumidity = %
+Units AirPressure = hPa
+Units Ramount = mm
+Units Hamount = hits/cm2
+
+''*******************
+''Device: Xantrex   *
+''*******************
+'None
+
+''*******************
+''Device: Shark     *
+''*******************
+Dim sResult(33)
+
+''*******************
+''Device: Thermistor*
+''*******************
+'None
+
+''*******************
+''Device: CH200     *
+''*******************
+'Arrays to hold the associated words for the charge state, charge source and check battery values. 
+Dim ChargeStateArr(6) As String 
+Dim ChargeSourceArr(3) As String 
+Dim CheckBatteryArr(2) As String 
+
+'>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+
+''''''''''''''''''''''
+''''''''''''''''''''''
+''     Aiases      '''
+''''''''''''''''''''''
+''''''''''''''''''''''
+
+''*******************
+''Device: eGauge    *
+''*******************
+'None
+
+''*******************
+''Device: Apogee    *
+''*******************
+'None
+
+''*******************
+''Device: Lp02      *
+''*******************
+'None
+
+''*******************
+''Device: Vaisala   *
+''*******************
+Alias WXT520(1) = WindDir
+Alias WXT520(2) = WindSpd
+Alias WXT520(3) = AirTemp
+Alias WXT520(4) = RelHumidity
+Alias WXT520(5) = AirPressure
+Alias WXT520(6) = Ramount
+Alias WXT520(7) = Hamount
+
+''*******************
+''Device: Xantrex   *
+''*******************
+'None
+
+''*******************
+''Device: Shark     *
+''*******************
+Alias sResult(1) = s200PowerResult
+Alias sResult(2) = s200EnergyReceivedResult
+Alias sResult(3) = s200EnergyDeliveredResult
+Alias sResult(4) = s200PfResult
+Alias sResult(5) = s200FreqResult
+Alias sResult(6) = s200VabResult
+Alias sResult(7) = s200VbcResult
+Alias sResult(8) = s200VcaResult
+Alias sResult(9) = s200IaResult
+Alias sResult(10) = s200IbResult
+Alias sResult(11) = s200IcResult
+Alias sResult(12) = s200THDVanResult
+Alias sResult(13) = s200THDIaResult
+Alias sResult(14) = s2001HResult
+Alias sResult(15) = s2002HResult
+Alias sResult(16) = s2003HResult
+Alias sResult(17) = s2004HResult
+Alias sResult(18) = s2005HResult
+Alias sResult(19) = s2006HResult
+Alias sResult(20) = s2007HResult
+Alias sResult(21) = s2008HResult
+Alias sResult(22) = s2009HResult
+Alias sResult(23) = s20010HResult
+Alias sResult(24) = s20011HResult
+Alias sResult(25) = s20012HResult
+Alias sResult(26) = s20013HResult
+Alias sResult(27) = s20014HResult
+Alias sResult(28) = s20015HResult
+Alias sResult(29) = s20016HResult
+Alias sResult(30) = s20017HResult
+Alias sResult(31) = s20018HResult
+Alias sResult(32) = s20019HResult
+Alias sResult(33) = s20020HResult
+
+Alias sharkEnergyReceived = EnergyReceived
+Alias sharkEnergyDelivered = EnergyDelivered
+'Three Voltage Readings
+Alias sharkV(1) = Vab
+Alias sharkV(2) = Vbc
+Alias sharkV(3) = Vca
+'Three Current Readings
+Alias sharkI(1) = Ia
+Alias sharkI(2) = Ib
+Alias sharkI(3) = Ic
+'Two Total percentage of harmonic distortion(for voltage and current)
+Alias sharkTHD(1) = THDVan
+Alias sharkTHD(2) = THDIa
+Alias sharkHarmonic(1) = shark1H
+Alias sharkHarmonic(2) = shark2H
+Alias sharkHarmonic(3) = shark3H
+Alias sharkHarmonic(4) = shark4H
+Alias sharkHarmonic(5) = shark5H
+Alias sharkHarmonic(6) = shark6H
+Alias sharkHarmonic(7) = shark7H
+Alias sharkHarmonic(8) = shark8H
+Alias sharkHarmonic(9) = shark9H
+Alias sharkHarmonic(10) = shark10H
+Alias sharkHarmonic(11) = shark11H
+Alias sharkHarmonic(12) = shark12H
+Alias sharkHarmonic(13) = shark13H
+Alias sharkHarmonic(14) = shark14H
+Alias sharkHarmonic(15) = shark15H
+Alias sharkHarmonic(16) = shark16H
+Alias sharkHarmonic(17) = shark17H
+Alias sharkHarmonic(18) = shark18H
+Alias sharkHarmonic(19) = shark19H
+Alias sharkHarmonic(20) = shark20H
+
+''*******************
+''Device: Thermistor*
+''*******************
+'None
+
+''*******************
+''Device: CH200     *
+''******************* 
+Alias CH200_M0(1) = VBatt 'Battery voltage: VDC   
+Alias CH200_M0(2) = IBatt  'Current going into, or out of, the battery: Amps  
+Alias CH200_M0(3) = ILoad  'Current going to the load: Amps  
+Alias CH200_M0(4) = V_in_chg   'Voltage coming into the charger: VDC   
+Alias CH200_M0(5) = I_in_chg   'Current coming into the charger: Amps
+Alias CH200_M0(6) = Chg_TmpC   'Charger temperature: Celsius     
+Alias CH200_M0(7) = Chg_State  'Charging state: Cycle, Float, Current Limited, or None  
+Alias CH200_M0(8) = Chg_Source 'Charging source: None, AC, or Solar     
+Alias CH200_M0(9) = Ck_Batt 'Check battery error: 0=normal, 1=check battery
+
+
+'!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+''''''''''''''''''''''''
+''''''''''''''''''''''''
+''     Tables        '''
+''''''''''''''''''''''''
+''''''''''''''''''''''''
+DataTable(genLoggerInfo, 1, -1)
+	DataInterval (0, 4, Sec, 10)
+	Minimum (1, batt_volt, FP2, 0, False)
+	Sample (1, PTemp, FP2)'average
+	Sample(2, microTemp(),FP2)'avg
+EndTable
+
+
+DataTable(masterAssessment, True, 8000)
+  DataInterval (0, 1, Min, 10)
+	Minimum (1, batt_volt, FP2, 0, False)
+	Average (1, PTemp, FP2, False)
+	Average (2, microTemp(), FP2, False)
+	Sample(numOfLoc, energy(), Long)
+	Sample(numOfLoc, power(), FP2)
+	'Average(1, Apogee_Wm2, FP2, False)
+	Average (1, LP02_Wm2, FP2, False)
+  WindVector (1, WindSpd, WindDir, FP2, False, 900, 0, 0)
+  FieldNames("Ws_Mean, Wd_MeanUnitVector, Wd_StdDev")
+  Average (1, AirTemp, FP2, False)
+  Average (1, RelHumidity, FP2, False)
+  Average (1, AirPressure, IEEE4, False)
+  Totalize (1, Ramount, FP2, False)
+  Totalize (1, Hamount, FP2, False)
+  Sample(2, sharkEnergyReceived(), Long)
+  Sample(2, sharkEnergyDelivered(), Long)
+  Average (1, sharkPower(), FP2, False)
+  Average (1, sharkPowerFactor, FP2, False)
+  Average (1, sharkFreq, FP2, False)
+  Average (3, sharkV(), FP2, False)
+  Average (3, sharkI(), FP2, False)
+  Sample(2, sharkTHD(), UINT2)
+  Sample(20, sharkHarmonic(), UINT2)
+EndTable
+
+''*******************
+''Device: eGauge    *
+''*******************
+'eGaugeINSTANTloc: Location of data drawn
+DataTable(eGaugeINSTANTloc, True, 1000)
+  DataInterval(0, 0, Sec, 5)
+  Sample(numOfLoc, location(), String)
+EndTable
+
+'eGaugeINSTANTeng: Energy used
+DataTable(eGaugeINSTANTeng, True, 1000)
+  DataInterval(0, 0, Sec, 5)
+  Sample(numOfLoc, energy(), Long)
+EndTable
+
+'eGaugeINSTANTeng: Power used
+DataTable(eGaugeINSTANTpow, True, 1000)
+  DataInterval(0, 0, Sec, 5)
+  Sample(numOfLoc, power(), FP2)
+EndTable
+
+
+''*******************
+''Device: Apogee    *
+''*******************
+'None
+
+''*******************
+''Device: Lp02      *
+''*******************
+'None
+
+''*******************
+''Device: Vaisala   *
+''*******************
+'Hourly Weather Data Table
+DataTable(weatherHour, True, -1)
+	DataInterval(0, 60, Min, 10)
+	'Average(1, Apogee_Wm2, FP2, False)
+	Average (1, LP02_Wm2, FP2, False)
+  WindVector (1, WindSpd, WindDir, FP2, False, 900, 0, 0)
+  FieldNames("Ws_Mean, Wd_MeanUnitVector, Wd_StdDev")
+  Average (1, AirTemp, FP2, False)
+  Sample (1, RelHumidity, FP2)
+  Sample (1, AirPressure, IEEE4)
+  Totalize (1, Ramount, FP2, False)
+  Totalize (1, Hamount, FP2, False)
+EndTable
+
+'Half Minute Weather
+DataTable(weatherQuick, True, -1)
+	DataInterval(0, 30, Sec, 10)
+	'Average(1, Apogee_Wm2, FP2, False)
+	Average (1, LP02_Wm2, FP2, False)
+  WindVector (1, WindSpd, WindDir, FP2, False, 900, 0, 0)
+  FieldNames("Ws_Mean, Wd_MeanUnitVector, Wd_StdDev")
+  Average (1, AirTemp, FP2, False)
+  Sample (1, RelHumidity, FP2)
+  Sample (1, AirPressure, IEEE4)
+  Totalize (1, Ramount, FP2, False)
+  Totalize (1, Hamount, FP2, False)
+EndTable
+
+
+''*******************
+''Device: Xantrex   *
+''*******************
+'None
+
+''*******************
+''Device: Shark     *
+''*******************
+'Table for Shark200 meter measuring generator
+DataTable(shark, True, -1)
+  DataInterval(0, 4, Sec, 10)
+  Sample(1, sharkPower(), FP2)
+  Sample(2, sharkEnergyReceived(), Long)
+  Sample(2, sharkEnergyDelivered(), Long)
+  Sample(1, sharkPowerFactor, FP2)
+  Sample(1, sharkFreq, FP2)
+  Sample(3, sharkV(), FP2)
+  Sample(3, sharkI(), FP2)
+  Sample(2, sharkTHD(),UINT2)
+  Sample(20, sharkHarmonic(),UINT2)
+EndTable
+
+'Table for Shark results
+DataTable(sharkResults, True, -1)
+  DataInterval(0, 4, Sec, 10)
+  Sample(1, genRunTime, FP2)
+  Sample(33, sResult(), Long)
+EndTable
+
+
+''*******************
+''Device: Thermistor*
+''*******************
+'None
+
+''*******************
+''Device: CH200     *
+''*******************
+DataTable (BatteryMin, 1, -1) 
+  DataInterval (0, 1, Min, 10) 
+  Minimum (6, CH200_M0(), FP2, 0, False) 
+  Maximum (6, CH200_M0(), FP2, False, False) 
+  Minimum (1, PTemp(), FP2, 0, False) 
+  Maximum (1, PTemp(), FP2, False, False) 
+EndTable
+
+ 
+'&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&
+
+
+'The main program begins here
+BeginProg
+  
+  'Open Serial Port on COM1 For Shark Meters
+   SerialOpen (Com1, 9600, 0, 0, 10000)
+    
+  'Open Serial Port for Xantrex Battery Monitor
+  'SerialOpen (ComRS232,19200,10, 0, 10000)
+  
+  Scan(scanRate, sec, 0, 0)  'It scans every 2 secs
+    
+    ''''''''''''''''''''''''''''''
+    ''''''''''''''''''''''''''''''
+    ''Communication with sensors''
+    ''''''''''''''''''''''''''''''
+    ''''''''''''''''''''''''''''''
+    'Datalogger Battery Voltage
+    Battery(batt_volt)
+    'Datalogger Panel Temp
+    PanelTemp(PTemp, _60Hz)
+
+  
+    
+    ''*******************
+    ''Device: Thermistor*
+    ''*******************
+    'Measure Differential Thermistor/Thermocouple from Diff2:3
+	  TCDiff(microTemp(1), 1, mV2_5C, 2, TypeT, PTemp, 1, 0, _60Hz, 1.8, 32)
+	  TCDiff(microTemp(2), 1, mV2_5C, 3, TypeT, PTemp, 1, 0, _60Hz, 1.8, 32)
+	  
+    'Converting panel temperature to Fahrenheit
+		PTemp = PTemp * 1.8 + 32
+		
+		
+		'General Data Table
+    CallTable(genLoggerInfo)
+    'Everything
+    CallTable(masterAssessment)
+    
+
+    ''*******************
+    ''Device: Apogee    *
+    ''*******************
+    'Apogee Meter at Diff1
+'    VoltDiff(Apogee_Wm2, 1, mV250, 1, True, 0, _60Hz, 5, 0) 
+'    'set negative values To zero
+'    If Apogee_Wm2 < 0 Then Apogee_Wm2 = 0
+ 
+  
+    
+    ''*******************
+    ''Device: Lp02      *
+    ''*******************
+    'The Multiplier (m) for this example is based upon a sensor calibration (c) of 16 uV/Wm-2, and will be different for each sensor. Multiplier (m) = 1000/c = 62.5.
+		'Lp02 Meter at Diff1
+		VoltDiff(LP02_Wm2, 1, mV25, 1, True, 0, _60Hz, 62.5, 0)
+		'Set negative readings to zero
+    If LP02_Wm2 < 0 Then LP02_Wm2 = 0
+    
+    
+    ''*******************
+    ''Device: Vaisala   *
+    ''*******************
+    
+    
+    'WXT520 connected to SDI12 port C5
+    SDI12Recorder(WXT520(),5, 0, "RC!", 1.0, 0)
+    
+    
+    'Vaisala table
+    CallTable(weatherHour)
+    CallTable(weatherQuick)
+    
+    ''*******************
+    ''Device: Shark200  *
+    ''*******************
+
+    'Shark200 meter at ModBus address 3
+    'Power
+    ModBusMaster(s200PowerResult, Com1, 9600, 3, 3,sharkPower, 1018, 2, 3, 50, 2)
+    'Energy
+    ModBusMaster(s200EnergyReceivedResult, Com1, 9600, 3, 3, sharkEnergyReceived(), 1500, 2, 3, 50, 2)
+    ModBusMaster(s200EnergyDeliveredResult, Com1, 9600, 3, 3, sharkEnergyDelivered(), 1500, 2, 3, 50, 2)
+    'PowerFactor
+    ModBusMaster(s200PfResult, Com1, 9600, 3, 3, sharkPowerFactor(), 1024, 2, 3, 50, 2)
+    'Frequency
+    ModBusMaster(s200FreqResult, Com1, 9600, 3, 3, sharkFreq(), 1026, 2, 3, 50, 2)
+    'Voltage
+    ModBusMaster(s200VabResult, Com1, 9600, 3, 3, sharkV(), 1006, 3, 3, 50, 2)
+    'Current
+    ModBusMaster(s200IaResult, Com1, 9600, 3, 3, sharkI(), 1012, 3, 3, 50, 2)
+    'Harmonics
+    ModBusMaster(s200THDVanResult, Com1, 9600, 3, 3, sharkTHD(), 6000, 2, 3, 50, 1)
+    ModBusMaster(sResult(33), Com1, 9600, 3, 3, sharkHarmonic(), 6006, 20, 3, 50, 1)
+    
+    'Check to see if the generator is running
+    If sharkPower(1) > 0
+      scanTime = scanTime + scanRate
+      genRunTime = Round(scanTime / 3600, 3)
+    EndIf
+    
+    If genRunTime >= 24
+      genRunTime = 0
+    EndIf
+    
+  
+    'Shark Tables
+		CallTable(shark)
+		CallTable(sharkResults)
+		
+    ''*******************
+    ''Device: Xantrex   *
+    ''*******************
+   ' SerialIn(inXanString, ComRS232, 100, 0, 10000) 
+
+   
+    NextScan
+    
+    
+    ''*******************
+    ''Device: eGauge    *
+    ''*******************
+    SlowSequence
+      Scan (5, sec, 0, 0)
+        HTTPHeader = ""
+ 
+        'Getting data from eGauge using the eGauge's api. This is the Instanteous query 
+        socket = HTTPGet(XMLQueryString, xml_content, HTTPHeader)
+ 
+        TCPClose(socket)
+  
+        'Initial parameter for XMLParse to handle a xml document
+        xml_response_code = XML_START
+        xml_element_namespace = "Initialize"
+ 
+        'Index for the arrays storing data
+        index = 2
+  
+        'While we aren't at the end of a document and we still have more data to draw.. Read!!!   
+        While xml_response_code > XML_UNRECOGNIZED_ERROR_CONDITION AND xml_response_code <> XML_END_OF_DOCUMENT AND index <= numOfVar
+          'XMLParse: Recently created function that parses xml docs
+          xml_response_code = XMLParse( xml_content, xml_value, xml_attribute_name, xml_attribute_namespace, xml_element_name, xml_element_namespace, XML_MAX_DEPTH, XML_MAX_NAMESPACES)
+          'Next, we ask loggernet to pick out specific data values
+          If xml_element_name = "ts" AND xml_attribute_name = "" AND xml_value <> NAN
+            eGaugeDat(1) = xml_value
+            ts = eGaugeDat(1)   
+          EndIf
+          '''''
+          ' v(Integer S64): cumulative register value expressed in a type-specific unit
+          ' i(Float): The average rate of change of the register value as measured for the most recent one-second interval
+          If xml_element_name = "v" AND xml_attribute_name = "" AND xml_value <> NAN
+            eGaugeDat(index) = xml_value 
+            energy(index / 2) = eGaugeDat(index) / 3600000
+            time_stamp(index / 2) = ts
+            index = index + 1
+          ElseIf xml_element_name = "i" AND xml_attribute_name = "" AND xml_value <> NAN
+            eGaugeDat(index) = xml_value 
+            power((index - 1) / 2) = eGaugeDat(index)
+            index = index + 1
+          EndIf    
+        Wend 'End while
+  
+        CallTable(eGaugeINSTANTeng)
+        CallTable(eGaugeINSTANTloc)
+        CallTable(eGaugeINSTANTpow)
+      NextScan
+    EndSequence
+    
+
+    ''*******************
+    ''Device: CH200     *
+    ''*******************
+    'SlowSequence with SDI-12 measurements 
+    SlowSequence 
+      Scan(10, sec, 0, 0)
+        'Load arrays with words to associate with the charge state, charge source and check battery values from the PS/CH200. 
+        ChargeStateArr(1) = "Regulator Fault" 
+        ChargeStateArr(2) = "No Charge" 
+        ChargeStateArr(3) = "Current Limited" 
+        ChargeStateArr(4) = "Cycle Charging" 
+        ChargeStateArr(5) = "Float Charging" 
+        ChargeStateArr(6) = "Battery Test" 
+   
+        ChargeSourceArr(1) = "None" 
+        ChargeSourceArr(2) = "Solar" 
+        ChargeSourceArr(3) = "Continuous"
+   
+        CheckBatteryArr(1) = "Normal" 
+        CheckBatteryArr(2) = "Check Battery"
+        SDI12Recorder (CH200_M0(), 3, 0, "MC!", 1.0, 0) 
+        'Array values start with one. Values for charge state start with -1.  
+        'Have to shift the value by two to line it up with the correct words 
+        'in the array. 
+        ChargeState = ChargeStateArr(Chg_State + 2) 
+        'Values for charge source start with zero. Have to shift the value 
+        'by one to line it up with the correct words in the array. 
+        ChargeSource = ChargeSourceArr(Chg_Source + 1) 
+        'Values for check battery start with zero. Have to shift the value 
+        'by one to line it up with the correct words in the array. 
+        CheckBattery = CheckBatteryArr(Ck_Batt + 1)
+        
+        CallTable(BatteryMin)
+      NextScan
+     EndSequence
+EndProg

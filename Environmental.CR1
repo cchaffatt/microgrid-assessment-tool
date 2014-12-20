@@ -1,0 +1,47 @@
+'CR1000 Env. Station
+'Mike Swanson
+
+'Declare Public Variables
+
+Public PTemp, batt_volt, Temp_C(6), Env_Temp_Table
+'loop variables
+Dim start, end = 6
+
+'Define Data Tables
+DataTable(Env_Temp_Table, True, -1)
+	DataInterval(0,10,Sec,10)
+	Sample(6, Temp_C(), FP2)
+EndTable
+
+'Define Data Tables
+DataTable(Solarium, True, -1)
+	DataInterval(0,10,Sec,10)
+	Sample(1, PTemp, FP2)
+	Sample(1, batt_volt, FP2)
+EndTable
+
+
+'Main Program
+BeginProg
+	Scan (5,Sec,1,0)
+		PanelTemp (PTemp,250)
+		Battery (batt_volt)
+		
+		
+		'Measure Differential Thermocouple from DIFF 5
+	  TCDiff(Temp_C(1), 1, mV2_5C, 5, TypeT, PTemp, 1, 0, _60Hz, 1.8, 32)
+		
+		For start = 2 To end 
+		'Measure Single Ended Thermocouple from SE 11-16
+		 TCSe (Temp_C(start), 1, mV2_5C, 11, TypeT, PTemp, 1, 0, 250, 1.8, 32)
+		 Next start
+		
+		'Converting to Fahrenheit
+		PTemp = PTemp * 1.8 + 32
+		
+		
+		CallTable(Env_Temp_Table)
+		CallTable(Solarium)
+	NextScan
+EndProg
+

@@ -1,0 +1,67 @@
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Program: filesAndTypes                                                                     '
+'Programmer: Carl Chaffatt                                                          '
+'Reference: None                                                                    '
+'Objective: To create a program that stores a file in CPU, USR or CRD within the    '
+'dataloggers memory which can be accessed somewhere else to use HTML/any format     '
+'as output.                                                                         '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+'** Declaring public variables **'
+''''''''''''''''''''''''''''''''''
+Public file_handle
+
+
+'The main program begins here
+BeginProg
+  Scan (10,Sec,0,0)  'It scans every 10 secs
+  
+  
+      'This code creates a file in the HTML-format for HTTPout
+      
+      'The FileOpen function is used to open an ASCII text file or a binary file for writing or reading.
+      file_handle = FileOpen ("USR:powerOut.html", "w+", -1) 'Opening a file to be written in the USR drive
+      'Creating the file
+      FileWrite(file_handle, "<!DOCTYPE html>" & CHR(10) & "<html lang=" & CHR(34) & "en-US", 0) 'CHR(10): line feed   
+      FileWrite(file_handle, CHR(34) & "style=" & CHR(34) & "height:100%; " & CHR(34) & ">" & CHR(10) & "<head>" & CHR(10), 0) 'CHR(34): cancel
+      FileWrite(file_handle, "<h1 style=" & CHR(34) & "text-align:center; color:Yellow;" & CHR(34) & "><b>Datalogger: Power</b></h1>" & CHR(10) & "<title>Datalogger Power</title>", 0)
+      FileWrite(file_handle, CHR(10) & "</head>" & CHR(10) & "<body style=" & CHR(34) & "background-color:aqua;" & CHR(34) & CHR(10), 0)
+      FileWrite(file_handle, "<br><p style=" & CHR(34) & "text-align:center;" & CHR(34) & ">This is an attempt to write a paragraph.", 0)
+      FileWrite(file_handle, "on the the powerOut link. Useful information will be posted later if this works fairly well." & CHR(10) & "<br>", 0)
+      FileWrite(file_handle, "Data about datalogger: Power and 12-22 North will be posted here for aesthetics and reference</p><div><br>" & CHR(10), 0)
+      FileWrite(file_handle, "<img src=https://api.cosm.com/v2/feeds/66905/datastreams/Battery.png?width=900&height=300&colour=%23f15a24&duration=1day&legend=Temp&title=Power&show_axis_labels=true&detailed_grid=true&scale=datastream&timezone=Eastern%20Time%20(US%20%26%20Canada)" & CHR(10), 0)
+      FileWrite(file_handle, "alt=" & CHR(34) & "Readings from datalogger: Power" & CHR(34) & " style=" & CHR(34) & "margin:auto; display:block;/>" & CHR(10) & "</div></body>" & CHR(10), 0)
+      FileWrite(file_handle, "<!--This is how you comment. Write notes like this. <hr/> Horizontal line. Learn CSS and Attributes-->" & CHR(10) & "<div class=" & CHR(34) & "footer" & CHR(34) & " style=" & CHR(34) & "position:absolute;bottom:0;" & CHR(34) &  " >", 0)
+      FileWrite(file_handle, "<br> <font color=" & CHR(34) & "Magenta" & CHR(34) & ">" & CHR(10) & "<center><a id =" & CHR(34) & "centeredlink" & CHR(34) & "href=" & CHR(34) & "http://www.12-22North.com" & CHR(34) & ">visit us @12-22North.com</a></center>" & CHR(10) & "</div>", 0)
+      FileWrite(file_handle, "</html>" & CHR(10), 0)
+
+
+      FileClose (file_handle)'close file
+      
+      
+' 
+'      file_handle = FileOpen ("CPU:smartLee.html", "w+", -1) 'Opening a file to be written in the USR drive
+'      'Creating the file
+'      FileWrite(file_handle, "<!DOCTYPE html>" & CHR(10) & "<html lang=" & CHR(34) & "en-US", 0) 'CHR(10): line feed   
+'      FileWrite(file_handle, CHR(34) & "style=" & CHR(34) & "height:100%; " & CHR(34) & ">" & CHR(10) & "<head>" & CHR(10), 0) 'CHR(34): cancel
+'      FileWrite(file_handle, "<h1 style=" & CHR(34) & "text-align:center; color:Yellow;" & CHR(34) & "><b>Gas Meter: 12-22N</b></h1>" & CHR(10) & "<title>Gas Meter</title>", 0)
+'      FileWrite(file_handle, CHR(10) & "</head>" & CHR(10) & "<body style=" & CHR(34) & "background-color:aqua;" & CHR(34) & CHR(10), 0)
+'      FileWrite(file_handle, "<br><p style=" & CHR(34) & "text-align:center;" & CHR(34) & ">This is an attempt to post a link from smart lee.", 0)
+'      FileWrite(file_handle, "on the the gas meter. Useful information will be posted later if this works fairly well." & CHR(10) & "<br>", 0)
+'      FileWrite(file_handle, "Data about the meter shall be posted shortly.</p><div><br>" & CHR(10), 0)
+'      FileWrite(file_handle, "<a href=" & CHR(34) & "https://www.livesmartlee.com/edis/smartlee/myReports" & CHR(34) & "id=" & CHR(34) & "id39" & CHR(34) & ">" & CHR(10), 0)
+'     
+'      FileClose (file_handle)'close file
+'   'Optional: Delete file. If left undeleted you can see the file in file control
+'   'FileManage("USR:powerOut.html", 8)
+   
+     file_handle = FileOpen ("USR:eGaugeSTORED.xml", "w+", -1)
+     FileClose (file_handle)'close file
+     file_handle = FileOpen ("USR:eGaugeINSTANT.xml", "w+", -1)
+     FileClose (file_handle)'close file
+  Next Scan    
+EndProg
+
+
+

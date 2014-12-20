@@ -1,0 +1,153 @@
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Program: queryComputing(eGauge_HTTPget)                                            '
+'Programmer: Carl Chaffatt                                                          '
+'Reference: Gary Roberts (XMLParse)                                                 '
+'Device: 22north(eGauge)                                                            '
+'Network: http://22north.egauge.es                                                  '
+'Objective: Sending this program to a dataloggger which in turn uses HTTPget and    '
+'eGauge's api to pull queries from our eGauge device(CGI)                           '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+''''''''''''''''''''''''''''''''''
+'      Declaring variables       '
+''''''''''''''''''''''''''''''''''
+'String constants and XMLParse parameter constants
+'Const MAX_BYTES_READ = 10000 'max number of bytes to read from file.  Compare file_read_bytes and bump this number up if getting close.
+'Const XMLfileName = "USR:eGaugeINSTANT.xml"
+Const XMLQueryString = "http://22north.egaug.es/cgi-bin/egauge?params/tot&v1&inst" 'eGauge API Instantaneous with parameter specifications
+'XMLParse max settings
+Const XML_MAX_DEPTH = 5  'CSI's XML format has a maximum nexting depth of 4 elements.  So give it one more than is needed in memory.
+Const XML_MAX_NAMESPACES = 1  'SOAP standard usually has two name spaces minimum.  The ones we are looking at only have one (the default namespace).
+'indexing constants
+Const numOfLoc = 11 'Number of locations
+Const numOfVar = 23 'Number of variables
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'XMLParse codes as defined and documented at http://engsoft.campbellsci.com/wiki/index.php/CR1000_Soap_Support'
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Const XML_TO_MANY_NAMESPACES = -3 ' To many name space declarations encountered while parsing an element
+Const XML_NESTED_TO_DEEP = -2 ' To many nexted XML elements
+Const XML_SYNTAX_ERROR_OR_FAILED = -1 ' XML syntax error or XMLParse failed
+Const XML_UNRECOGNIZED_ERROR_CONDITION = 0 'Unrecognized error condition
+Const XML_START = 1 'Start of XML element
+Const XML_ATTRIBUTE_READ = 2 ' XML attribute read.
+Const XML_END_OF_ELEMENT = 3 ' End of XML element
+Const XML_END_OF_DOCUMENT = 4 ' END of XML document encountered.  The document has been read/parsed successfully.
+
+
+'Public variables
+''''''''''''''''''
+'HTTPget strings
+Public HTTPHeader As String * 100
+'XMLParse alocated public variables
+Public xml_response_code 'used to see what XMLParse is returning
+Public xml_attribute_name As String * 50
+Public xml_attribute_namespace As String * 100
+Public xml_content As String * 1000   
+Public xml_element_namespace As String * 30
+Public xml_element_name As String * 30
+Public xml_value As String * 45
+'Public file_handle2 'file pointer used by FileOpen
+'Public fileReadBytes2 'number of bytes given by FileRead when reading XML_FILE_NAME
+Public socket
+Public eGaugeDat(23)
+Public index
+
+
+'Dimensional-array variables for tables
+Dim location(numOfLoc) As String * 100 = {"Grid", "PV Array 1", "PV Array 1+", "PV Array 2", "PV Array 2+", "Fridge Circuit", _
+"Fans + Halls?", "East front hall", "West front hall", "Recept East", "Recept West"} 
+Dim energy(numOfLoc), power(numOfLoc), time_stamp(numOfLoc), ts
+
+
+
+'Creating eGuage data table: tot, v1 and inst parameter implemented using instantaneous eGauge api
+'(See XMLfileName)
+'
+'Query parameters
+'*****************
+'tot: totals and virtual registers calculated from physical registers
+'v1: request output to be in the v1.00 format
+'inst: Requests that instantaneous rate of change be included alongside normal registers
+'****************
+'eGaugeINSTANTloc: Location of data drawn
+DataTable(eGaugeINSTANTloc, True, 1000)
+  DataInterval(0, 0, Sec, 5)
+  Sample(numOfLoc, location(), String)
+EndTable
+
+'eGaugeINSTANTeng: Energy used
+DataTable(eGaugeINSTANTeng, True, 1000)
+  DataInterval(0, 0, Sec, 5)
+  Sample(numOfLoc, energy(), Long)
+EndTable
+
+'eGaugeINSTANTeng: Power used
+DataTable(eGaugeINSTANTpow, True, 1000)
+  DataInterval(0, 0, Sec, 5)
+  Sample(numOfLoc, power(), FP2)
+EndTable
+ 
+
+'The main program begins here
+BeginProg
+   
+  Scan (5,sec,0,0)  'It scans every 5 secs
+  HTTPHeader = ""
+  'xml_content = ""
+  
+ 
+  'Getting data from eGauge using the eGauge's api. This is the Instanteous query 
+  socket = HTTPGet(XMLQueryString, xml_content, HTTPHeader)
+  
+ 
+  TCPClose(socket)
+   
+'*Executed when using a file to dump data in 
+'**********************************************
+'  'copy the the content of the xml file to a string variable we can use to parse against
+'  file_handle = FileOpen (XMLfileName, "r", 0) 'open file for reading
+'  fileReadBytes = FileRead( file_handle, xml_content, MAX_BYTES_READ) ' read the file into our string
+'  FileClose (file_handle)  'close the filehandle to the file we just read
+  
+  'Initial parameter for XMLParse to handle a xml document
+  xml_response_code = XML_START
+  xml_element_namespace = "Initialize"
+ 
+  'Index for the arrays storing data
+  index = 2
+  
+  'While we aren't at the end of a document and we still have more data to draw.. Read!!!   
+  While xml_response_code > XML_UNRECOGNIZED_ERROR_CONDITION AND xml_response_code <> XML_END_OF_DOCUMENT AND index <= numOfVar
+    'XMLParse: Recently created function that parses xml docs
+    xml_response_code = XMLParse( xml_content, xml_value, xml_attribute_name, xml_attribute_namespace, xml_element_name, xml_element_namespace, XML_MAX_DEPTH, XML_MAX_NAMESPACES)
+    'Next, we ask loggernet to pick out specific data values
+    If xml_element_name = "ts" AND xml_attribute_name = "" AND xml_value <> NAN
+      eGaugeDat(1) = xml_value
+      ts = eGaugeDat(1)   
+    EndIf
+    '''''
+    ' v(Integer S64): cumulative register value expressed in a type-specific unit
+    ' i(Float): The average rate of change of the register value as measured for the most recent one-second interval
+    If xml_element_name = "v" AND xml_attribute_name = "" AND xml_value <> NAN
+      eGaugeDat(index) = xml_value 
+      energy(index / 2) = eGaugeDat(index) / 3600000
+      time_stamp(index / 2) = ts
+      index = index + 1
+    ElseIf xml_element_name = "i" AND xml_attribute_name = "" AND xml_value <> NAN
+      eGaugeDat(index) = xml_value 
+      power((index - 1) / 2) = eGaugeDat(index)
+      index = index + 1
+    EndIf    
+  Wend 'End while
+  
+   
+  'Deleting the XML files **********If you use files
+  'FileManage(XMLfileName, 8)
+
+  CallTable(eGaugeINSTANTeng)
+  CallTable(eGaugeINSTANTloc)
+  CallTable(eGaugeINSTANTpow)
+  NextScan
+    
+EndProg

@@ -1,0 +1,191 @@
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Program: cloudComputing(Cosm_serialOut)                                            '
+'Programmer: Carl Chaffatt                                                          '
+'Reference: Gary Roberts [gtroberts@campbellsci.com]                                '
+'Objective: Sending this program to the Atrium Power datalogger that recieves data  '
+'from other dataloggers which then sends that data to an cosm's online cloud using  '
+'serial out commands.                                                               '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+        '*********************************************************************
+        'Incomplete: serialout strings need to be in the json format for cosm*
+        '*********************************************************************
+              
+'Constant variables
+Const CRLF = CHR(13) & CHR(10)'Character Codes: CHR(13) means carriage return and CHR(10) means new feed
+'Parameters Specific to Cosm
+Const feedID = "65927"
+Const apiKey = "QqSMR_ZWsDGh0VVp6Rmld7o7e-SSAKxPUHMyS3hnVUlTYz0g"
+'Some Intervals 
+Const LogInt = 30 
+Const PostInt = 900
+Const tcpInt = 30  
+
+'Number of Data Streams
+Const NumDatStream = 3 
+
+
+'Dimensional variables. These won't show up in the public table
+Dim HPST As String * 150 'Serial out string 
+Dim Dat As String * 254
+Dim DatLen   'will store the number of bytes in a string
+Dim DatVar   'data variables
+Dim Commands As String
+'Datastream variables
+Dim dataStreams(NumDatStream) As String * 31 = {"Battery", "PanelTemp", "TC"}
+Dim batt_volt, PTemp, TC, record(NumDatStream)
+
+
+'Public variables for TCP connection
+Public cosmDat(NumDatStream)
+Public Ping As Boolean
+Public PingTime As Long
+Public IPSocket As Long
+
+
+
+'Creating data tables
+DataTable (Cosm,True,1000)
+  DataInterval (0,LogInt,Sec,10)
+  Sample (NumDatStream,cosmDat(),FP2)
+EndTable
+
+
+DataTable (Debug,True,1000)
+  Sample (1,Dat,String)
+  Sample (1,HPST,String)
+EndTable
+
+
+'Sub Routine for Cosm requests in CSV format
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub cosmCSV(Dest As String * 254, Field, Recs)
+  Dim I
+  Dim RecTime As String * 31
+  Dim FieldVal
+  Dest = ""
+  If Recs >= 1 Then
+    For I = Recs To 1 Step - 1
+      RecTime = Cosm.Timestamp(4,I)
+      If Left(RecTime,1) = "-" Then Exit For
+      MoveBytes (RecTime,10,"T",0,1)
+      MoveBytes (RecTime,19,"Z",0,1)
+      MoveBytes (RecTime,29,"",0,1)
+      FieldVal = Cosm.cosmDat(Field,I) 'get field value
+      Dest = Dest & RecTime & "," & FieldVal & CRLF 'form retrun string
+    Next I
+  EndIf
+EndSub
+
+
+'Sub Routine For pachube requests in JSON format. This Is user defined function.
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub cosmJSON(Dest As String * 254, Field, Recs)
+  Dim I
+  Dim RecTime As String * 31
+  Dim FieldVal
+  Dest = ""
+  If Recs >= 1 Then
+    For I = Recs To 1 Step - 1 'Loops backwards from Recs to 1
+      RecTime = Cosm.Timestamp(4,I)
+      If Left(RecTime,1) = "-" Then Exit For
+      'The MoveBytes instruction is used to move binary bytes of data into a different memory location
+      MoveBytes (RecTime,10,"T",0,1)
+      MoveBytes (RecTime,19,"Z",0,1)
+      MoveBytes (RecTime,29,"",0,1)
+      FieldVal = Cosm.cosmDat(Field,I) 'get field value
+      If Dest <> "" Then (Dest = Dest & ",")
+      Dest = Dest & "{""at"":""" & RecTime & """,""value"":""" & FieldVal & """}"
+    Next I
+    Dest = "{""datapoints"":[" & Dest & "]}"
+  EndIf
+EndSub
+
+
+'Creates a web page that either replaces or is a link to the default web page NL115 allows 
+WebPageBegin ("Power.html",Commands)
+  HTTPOut ("<div><img src=""http://api.pachube.com/v2/feeds/34773/datastreams/4.png?width=730&height=250&colour=%23f15a24&duration=3hours&legend=RND&title=Random Value vs. Time&show_axis_labels=true&detailed_grid=true&scale=manual&min=0&max=1&timezone=UTC"" /></div>")
+  HTTPOut ("<div><OBJECT classid=""clsid:D27CDB6E-AE6D-11cf-96B8-444553540000"" codebase=""http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=6,0,0,0"" "
+  HTTPOut ("WIDTH=""200"" HEIGHT=""100"" ID=""gauge""><PARAM NAME=""movie"" VALUE=""http://apps.pachube.com/scaredycat/gauge.swf?xml_source=http%3A//apps.pachube.com/scaredycat/getData.php%3Fm%3D0%26f%3D34773%26s%3DBattery%26u%3D15%26l%3D11%26n%3D5%26t%3DBattery%20Voltage%26w%3Dtrue%26c1%3D33FF33%26c2%3DEFE415%26c3%3DEF8B15%26c4%3DFF3333%26in%3Dfalse"""
+  HTTPOut (" /><PARAM NAME=""quality"" VALUE=""high"" /><param name=""wmode"" value=""transparent""><param name=""allowScriptAccess"" value=""sameDomain"" /><EMBED src=""http://apps.pachube.com/scaredycat/gauge.swf?xml_source=http%3A//apps.pachube.com/scaredycat/getData.php%3Fm%3D0%26f%3D34773%26s%3DBattery%26u%3D15%26l%3D11%26n%3D5%26t%3DBattery%20Voltage%26w%3Dtrue%26c1%3D33FF33%26c2%3DEFE415%26c3%3DEF8B15%26c4%3DFF3333%26in%3Dfalse"""
+  HTTPOut (" quality=""high"" wmode=""transparent"" WIDTH=""200"" HEIGHT=""100"" NAME=""gauge"" allowScriptAccess=""sameDomain"" swLiveConnect=""true"" TYPE=""application/x-shockwave-flash"" PLUGINSPAGE=""http://www.macromedia.com/go/getflashplayer""></EMBED></OBJECT></div>")
+WebPageEnd
+
+
+BeginProg
+  Scan (10,Sec,0,0)  
+    'The IPRoute instruction is used to set the interface to be used (Ethernet or PPP) when 
+    'the datalogger sends an outgoing packet and both interfaces are active.
+    IPRoute("api.cosm.com", 3)
+    
+    
+    'Assigning values to the cosmDat variable array
+    cosmDat(1) = batt_volt
+    cosmDat(2) = PTemp
+    cosmDat(3) = TC 
+    
+    
+    If Ping Then
+      Ping = FALSE
+      PingTime = PingIP ("http://api.cosm.com/v2/devices/714dfa0eb19fbd8349a5af4648f97468c65f8469/activate",1000)
+      'The PingIP function is used to ping an IP address. Return the time it take to make a connection
+    EndIf
+
+
+    Battery(batt_volt)
+    PanelTemp(PTemp, 250)
+    TCDiff (TC, 1, mV2_5C, 1, TypeT, PTemp, True , 0, 250, 1, 0)
+    'Converting to Farenheit
+    PTemp = PTemp * 1.8 + 32 
+    TC = TC * 1.8 + 32
+   
+   
+    CallTable (Cosm)
+  NextScan   
+
+  
+  
+   SlowSequence
+   Scan (tcpInt,Sec,3,0)
+     
+    
+    IPSocket = TCPOpen("api.cosm.com",8081,1024)
+    'The TCPOpen function is used to set up a TCP/IP socket for communication. 
+    
+    If IPSocket <> 0 Then
+
+      For DatVar = 1 To NumDatStream 'parsing through the data streams
+        cosmJSON(Dat, DatVar, PostInt/LogInt)
+        'The Len function is used to return the number of bytes in a string.
+        DatLen = Len (Dat)
+        
+        'The SerialOut function is used to transmit a string over one of the datalogger's communication ports.
+        HPST = "POST /v2/feeds/" & feedID & "/datastreams/" & dataStreams(DatVar) & "/datapoints HTTP/1.1" & CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = "User-Agent: Campbell Scientific Datalogger" & CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = "Host: api.cosm.com" & CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = "Accept: */*" + CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = "X-PachubeApiKey: " & ApiKey & CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = "Content-Length: " & DatLen & "" & CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = "Content-Type: application/x-www-form-urlencoded" + CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        HPST = CRLF
+        SerialOut(IPSocket,HPST,"",0,0)
+        SerialOut(IPSocket,Dat,"",0,0)
+        Delay (1,1000,mSec)
+        SerialInBlock (IPSocket,HPST,148)
+        CallTable (Debug)
+      Next DatVar
+    EndIf
+  NextScan
+  EndSequence
+ 
+EndProg
+
+
+

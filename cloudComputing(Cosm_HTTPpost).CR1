@@ -1,0 +1,307 @@
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Program: cloudComputing(Cosm_HTTPpost)                                             '
+'Programmer: Carl Chaffatt                                                          '
+'Reference: Gary Roberts [gtroberts@campbellsci.com]                                '
+'Objective: Sending this program to the Atrium Power datalogger that recieves data  '
+'from other dataloggers which then sends that data to cosm's online cloud using     '
+'HTTPpost.                                                                          '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+'Constant variables and parameters specific to Cosm
+Const feedID = "65927"
+Const feedID2 = "66905"
+Const apiKey = "QqSMR_ZWsDGh0VVp6Rmld7o7e-SSAKxPUHMyS3hnVUlTYz0g"
+'Spacing constants
+Const threeSpace = CHR(32) & CHR(32) & CHR(32)
+Const sixSpace = threeSpace & threeSpace
+Const nineSpace =  sixSpace & threeSpace 
+'Some Intervals 
+Const LogInt = 30 
+Const httpInt = 30
+Const httpInt2 = 40
+'Number of Data Streams
+Const NumDatStream = 3
+Const NumDatStream2 = 8 
+
+
+'Dimensional variables. These won't show up in the public table
+Dim DatVar   'data variable
+Dim Commands As String
+'Data stream variables
+Dim dataStreams(NumDatStream) As String * 31 = {"Battery", "PanelTemp", "TC"}
+Dim dataStreams2(NumDatStream2) As String = {"TC1", "TC2", "TC3", "TC4", "TC5", "TC6", "PanelTemp", "Battery"}
+Dim batt_volt, PTemp, TC, record(NumDatStream), record2(NumDatStream2) 
+
+
+'** Declaring public variables **'
+''''''''''''''''''''''''''''''''''
+'Public variables for HttpPost
+Public file, file_handle, file_handle2, file_handle3
+Public http_header_update As String * 100 'Gives brief response
+Public http_header_power As String * 100 'Gives brief response
+Public http_header_envir As String * 100 'Gives brief response
+Public http_post_response As String * 200 'Gives Response to request
+Public http_post_tx 'returned connection number should be above 100
+Public cosmDat(NumDatStream)
+'Holding variables from datalogger environmental
+Public getEnvir(8), envirCode
+'Socket between Environment and Power
+Public socketEnv As String
+'monitoring variables
+Public response, time as string * 25
+
+
+
+'Creating cosm data table
+DataTable (Cosm, True, 1000)
+  DataInterval (0, LogInt, Sec, 10)
+  Sample (NumDatStream, cosmDat(), FP2)
+EndTable
+
+
+'Creating cosm data table
+DataTable (Envir, True, 1000)
+  DataInterval (0, LogInt, Sec, 10)
+  Sample (NumDatStream2, getEnvir(), FP2)
+EndTable
+
+
+'Creating a linked web page
+WebPageBegin ("Example.html",Commands)
+  HTTPOut ("<div><img src=""http://api.pachube.com/v2/feeds/66905/datastreams/4.png?width=730&height=250&colour=%23f15a24&duration=3hours&legend=RND&title=Random Value vs. Time&show_axis_labels=true&detailed_grid=true&scale=manual&min=0&max=1&timezone=UTC"" /></div>")
+  HTTPOut ("<div><OBJECT classid=""clsid:D27CDB6E-AE6D-11cf-96B8-444553540000"" codebase=""http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=6,0,0,0"" "
+  HTTPOut ("WIDTH=""200"" HEIGHT=""100"" ID=""gauge""><PARAM NAME=""movie"" VALUE=""http://apps.pachube.com/scaredycat/gauge.swf?xml_source=http%3A//apps.pachube.com/scaredycat/getData.php%3Fm%3D0%26f%3D34773%26s%3DBattery%26u%3D15%26l%3D11%26n%3D5%26t%3DBattery%20Voltage%26w%3Dtrue%26c1%3D33FF33%26c2%3DEFE415%26c3%3DEF8B15%26c4%3DFF3333%26in%3Dfalse"""
+  HTTPOut (" /><PARAM NAME=""quality"" VALUE=""high"" /><param name=""wmode"" value=""transparent""><param name=""allowScriptAccess"" value=""sameDomain"" /><EMBED src=""http://apps.pachube.com/scaredycat/gauge.swf?xml_source=http%3A//apps.pachube.com/scaredycat/getData.php%3Fm%3D0%26f%3D34773%26s%3DBattery%26u%3D15%26l%3D11%26n%3D5%26t%3DBattery%20Voltage%26w%3Dtrue%26c1%3D33FF33%26c2%3DEFE415%26c3%3DEF8B15%26c4%3DFF3333%26in%3Dfalse"""
+  HTTPOut (" quality=""high"" wmode=""transparent"" WIDTH=""200"" HEIGHT=""100"" NAME=""gauge"" allowScriptAccess=""sameDomain"" swLiveConnect=""true"" TYPE=""application/x-shockwave-flash"" PLUGINSPAGE=""http://www.macromedia.com/go/getflashplayer""></EMBED></OBJECT></div>")
+WebPageEnd
+
+
+'The main program begins here
+BeginProg
+  Scan (10,Sec,0,0)  'It scans every 10 secs
+  
+  'The IPRoute instruction is used to set the interface to be used (Ethernet or PPP) when 
+  'the datalogger sends an outgoing packet and both interfaces are active.
+  IPRoute("api.cosm.com", 3)
+
+
+  'SocketEnv is the exact wireless location of a remote datalogger: environmental's position. 
+  'If we use an ip address and other parameters dataloggers can communicate wirelessly
+   socketEnv = TCPOpen("10.0.1.72", 6785, 0)
+
+  'Getting data from the Solarium Room datalogger using a wireless connection.
+  GetVariables(envirCode, socketEnv, 0, 72, 0, 0, "Public", "Temp_C()", getEnvir(), 6)
+  GetVariables(envirCode, socketEnv, 0, 72, 0, 0, "Solarium", "PTemp", getEnvir(7), 1)
+  GetVariables(envirCode, socketEnv, 0, 72, 0, 0, "Solarium", "batt_volt", getEnvir(8), 1)
+  
+
+  'Enabling the sensors to be read
+  Battery(batt_volt)
+  PanelTemp(PTemp, 250)
+  TCDiff (TC, 1, mV2_5C, 1, TypeT, PTemp, True , 0, 250, 1.8, 32)
+  'Converting to Farenheit
+  PTemp = PTemp * 1.8 + 32 
+  
+ 
+ 
+  CallTable(Cosm)
+  CallTable(Envir)
+NextScan   
+
+'********************************************************************************************
+'This is a sub-scan. The sequence of code that gets execute alongside the main but at
+'at a desired time. Often slower so it doesn't interfere with the main program
+      
+          
+SlowSequence 'Sequence that runs slower than the main program
+  Scan (httpInt, Sec, 3, 0) 'scan parameters
+    
+  
+  'Assigning values to the cosmDat variable array
+  cosmDat(1) = batt_volt
+  cosmDat(2) = PTemp
+  cosmDat(3) = TC  
+  
+  
+  'Sends the api key and returns a http authorization code
+  http_header_update = "X-ApiKey:QqSMR_ZWsDGh0VVp6Rmld7o7e-SSAKxPUHMyS3hnVUlTYz0g" 'unique API key listed under Cosm profile
+     
+     
+  'Feed Update
+  file_handle = FileOpen ("USR:feedUpdate.json", "w+", -1) 
+  'What to write. Crucial formatting. MUST be in the correct format (json, xml, csv) for Cosm to accept.
+  FileWrite(file_handle, CHR(123) & CHR(10), 0) 'CHR(123): {  and  CHR(10): line feed   
+  FileWrite(file_handle, sixSpace & CHR(34) & "title" & CHR(34) & CHR(58) & CHR(34) & "CR1000: Power" & CHR(34) & CHR(44) & CHR(10), 0) 'CHR(44): ,
+  FileWrite(file_handle, sixSpace & CHR(34) & "website" & CHR(34) & CHR(58) & CHR(34) & "www.12-22North.com" & CHR(34) & CHR(44) & CHR(10), 0)  'CHR(34): cancel
+  FileWrite(file_handle, sixSpace & CHR(34) & "version" & CHR(34) & CHR(58) & CHR(34) & "1.0.0" & CHR(34) & CHR(44) & CHR(10), 0)  
+  FileWrite(file_handle, sixSpace & CHR(34) & "description" & CHR(34), 0) 'CHR(32): space 
+  FileWrite(file_handle, "" & CHR(58) & CHR(34) & "Retrieves data from the atrium Power datalogger at 12-22 North st." & CHR(34) & CHR(44) & CHR(10), 0) 'CHR(58): (:)
+  FileWrite(file_handle, sixSpace & CHR(34) & "location" & CHR(34) & CHR(58) & CHR(123) & CHR(10), 0)
+  FileWrite(file_handle, nineSpace & CHR(32) & CHR(34) & "lat" & CHR(34) & CHR(58) & "44.48450" & CHR(44) & CHR(10), 0)
+  FileWrite(file_handle, nineSpace & CHR(32) & CHR(34) & "lon" & CHR(34) & CHR(58) & "-73.22212" & CHR(44) & CHR(10), 0)
+  FileWrite(file_handle, nineSpace & CHR(32) & CHR(34) & "exposure" & CHR(34) & CHR(58) & CHR(34) & "indoor" & CHR(34) & CHR(44) & CHR(10), 0)
+  FileWrite(file_handle, nineSpace & CHR(32) & CHR(34) & "domain" & CHR(34) & CHR(58) & CHR(34) & "physical" & CHR(34) & CHR(44) & CHR(10), 0)
+  FileWrite(file_handle, nineSpace & CHR(32) & CHR(34) & "ele" & CHR(34) & CHR(58) & CHR(34) & "173" & CHR(34) & CHR(44) & CHR(10), 0)
+  FileWrite(file_handle, nineSpace & CHR(32) & CHR(34) & "name" & CHR(34) & CHR(58) & CHR(34) & "Power's location" & CHR(34) & CHR(10), 0) 
+  FileWrite(file_handle, sixSpace & CHR(125) & CHR(10) & CHR(125) & CHR(10), 0)  'CHR(125): }
+  'FileWrite(file_handle, CHR(125) & CHR(10), 0)
+  
+  
+
+  FileClose (file_handle)'close file
+  
+  'Sending HTTPpost to cosm's server and obtaining a written response
+  http_post_tx = HTTPPost ("http://api.cosm.com/v2/feeds/"& feedID &"?_method=put", "CPU:feedUpdate.json", http_post_response, http_header_update)
+  
+  
+  'Optional: Delete file. If left undeleted you can see the file in file control
+  'FileManage("CPU:feedUpdate.json", 8)
+   
+   
+  ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+  'Power's variables: *
+  '********************
+  'Post/push data to Cosm using new CRBasic command HttpPost
+  'function, parameters: HttpPost(uri, content, response, header)
+  '
+  
+   
+   For DatVar = 1 To NumDatStream
+     
+     'Sends the api key and returns a http authorization code
+     http_header_power = "X-ApiKey:QqSMR_ZWsDGh0VVp6Rmld7o7e-SSAKxPUHMyS3hnVUlTYz0g" 'unique API key listed under Cosm profile
+     
+   
+     'get last record and time from Sensor data in the table Cosm
+      GetRecord(record(), Cosm, NumDatStream)
+      time = Cosm.Timestamp(4, NumDatStream) 
+      
+      
+     'make sure we don't ever get any data here unless it is valid
+     If Left(time, 1) = "-" Then 
+        time = "" 
+     EndIf
+      
+      
+     If record(DatVar) <> NAN Then
+       'format our timestamp into the format required for COSM datapoints      
+       MoveBytes(time, 10, "T", 0, 1)
+       MoveBytes(time, 19, "-06", 0, 3)
+      
+     
+      'This code creates a file in the json-format that looks like this
+      '{
+      '  "datapoints":[
+      '    {"at":"yyyy-mm-ddT11:01:43-06","value":"some #"}
+      '  ]
+      '}
+      'The FileOpen function is used to open an ASCII text file or a binary file for writing or reading.
+      file_handle2 = FileOpen ("USR:Cosm.json", "w+", -1) 'Opening a file within the dataloggers memory in the json format
+      'What to write. Crucial formatting. MUST be in the correct format (json, xml, csv) for Cosm to accept.
+      FileWrite(file_handle2, CHR(123) & CHR(10), 0) 'CHR(123): {  and  CHR(10): line feed   
+      FileWrite(file_handle2, "  " & CHR(34) & "datapoints" & CHR(34) & ":[", 0) 'CHR(34): cancel
+      FileWrite(file_handle2, CHR(10), 0)
+      FileWrite(file_handle2, CHR(32) & CHR(32) & CHR(32) & CHR(32) & CHR(123), 0) 'CHR(32): space 
+      FileWrite(file_handle2, CHR(34) & "at" & CHR(34) & CHR(58) & CHR(34), 0) 'CHR(58): (:)
+      FileWrite(file_handle2, time, 0)
+      FileWrite(file_handle2, CHR(34) & CHR(44) & CHR(34) & "value" & CHR(34) & CHR(58), 0) 'CHR(44): ,
+      FileWrite(file_handle2, CHR(34) & "" & cosmDat(DatVar) & "" & CHR(34) & CHR(125), 0)  'CHR(125): }
+      FileWrite(file_handle2, CHR(10), 0)
+      FileWrite(file_handle2, "  ]", 0)
+      FileWrite(file_handle2, CHR(10) & CHR(125) & CHR(10), 0)
+      
+ 
+      FileClose (file_handle2)'close file
+      
+      'Sending HTTPpost to cosm's server and obtaining a written response
+      http_post_tx = HTTPPost ("http://api.cosm.com/v2/feeds/"& feedID &"/datastreams/"& dataStreams(DatVar) &"/datapoints", "CPU:Cosm.json", http_post_response, http_header_power)
+
+   Next DatVar 'Continue loop
+ 
+   'Optional: Delete file. If left undeleted you can see the file in file control
+   'FileManage("CPU:Cosm.json", 8)
+   
+    EndIf
+   NextScan
+EndSequence
+'end Power
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+
+  ''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+  'Environmental's variables: *
+  '****************************
+  'Post/push data to Cosm using new CRBasic command HttpPost
+  'function, parameters: HttpPost(uri, content, response, header)
+  '
+  
+  SlowSequence
+  Scan(httpInt2, Sec, 3, 0) 
+  For DatVar = 1 To NumDatStream2
+     
+     'Sends the api key and returns a http authorization code
+     http_header_envir = "X-ApiKey:QqSMR_ZWsDGh0VVp6Rmld7o7e-SSAKxPUHMyS3hnVUlTYz0g" 'unique API key listed under Cosm profile
+     
+   
+     'get last record and time from Sensor data in the table Cosm
+      GetRecord(record2(), Envir, NumDatStream2)
+      time = Envir.Timestamp(4, NumDatStream2) 
+      
+      
+     'make sure we don't ever get any data here unless it is valid
+     If Left(time, 1) = "-" Then 
+        time = "" 
+     EndIf
+     
+      
+     If record2(DatVar) <> NAN Then
+        'format our timestamp into the format required for COSM datapoints      
+        MoveBytes(time, 10, "T", 0, 1)
+        MoveBytes(time, 19, "-06", 0, 3)
+     
+     
+      'This code creates a file in the json-format that looks like this
+      '{
+      '  "datapoints":[
+      '    {"at":"yyyy-mm-ddT11:01:43-06","value":"some #"}
+      '  ]
+      '}
+      'The FileOpen function is used to open an ASCII text file or a binary file for writing or reading.
+      file_handle3 = FileOpen ("USR:Solarium.json", "w+", -1) 'Opening a file within the dataloggers memory in the json format
+      'What to write. Crucial formatting. MUST be in the correct format (json, xml, csv) for Cosm to accept.
+      FileWrite(file_handle3, CHR(123) & CHR(10), 0) 'CHR(123): {  and  CHR(10): line feed   
+      FileWrite(file_handle3, "  " & CHR(34) & "datapoints" & CHR(34) & ":[", 0) 'CHR(34): cancel
+      FileWrite(file_handle3, CHR(10), 0)
+      FileWrite(file_handle3, CHR(32) & CHR(32) & CHR(32) & CHR(32) & CHR(123), 0) 'CHR(32): space 
+      FileWrite(file_handle3, CHR(34) & "at" & CHR(34) & CHR(58) & CHR(34), 0) 'CHR(58): (:)
+      FileWrite(file_handle3, time, 0)
+      FileWrite(file_handle3, CHR(34) & CHR(44) & CHR(34) & "value" & CHR(34) & CHR(58), 0) 'CHR(44): ,
+      FileWrite(file_handle3, CHR(34) & "" & getEnvir(DatVar) & "" & CHR(34) & CHR(125), 0)  'CHR(125): }
+      FileWrite(file_handle3, CHR(10), 0)
+      FileWrite(file_handle3, "  ]", 0)
+      FileWrite(file_handle3, CHR(10) & CHR(125) & CHR(10), 0)
+      
+  
+      FileClose (file_handle3)'close file
+      
+      'Sending HTTPpost to cosm's server and obtaining a written response
+      http_post_tx = HTTPPost ("http://api.cosm.com/v2/feeds/"& feedID2 &"/datastreams/"& dataStreams2(DatVar) &"/datapoints", "CPU:Solarium.json", http_post_response, http_header_envir)
+
+   Next DatVar 'Continue loop
+ 
+   'Optional: Delete file. If left undeleted you can see the file in file control
+   'FileManage("CPU:Cosm.json", 8)
+   
+    EndIf
+   NextScan
+EndSequence
+'end of attempt
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+   
+    
+EndProg
+
+
+

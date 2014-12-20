@@ -1,0 +1,235 @@
+'CR1000
+'Created by Short Cut (2.8)
+
+''''''''Weather Variables'''''''''''''
+Public BattV, pTemp, Temp, Slr_Wm2(3), Slr_MJ(3), Pulse, WXT520(7)
+
+''''''''Battery and Power Meter Variables''''''''''''''''''''''
+Public CH200_M0(9), shark100Result(4), s100RealPower(2), s100Energy(2) As Long 
+Public s100pfF(2), s100VoltCurr(6), shark200Result(4), s200Energy(2) As Long
+
+
+'Specifying units of the public variables
+Units BattV = Volts 
+Units Slr_Wm2 = W/m²
+Units Slr_MJ = MJ/m²
+Units Pulse = Counts/Hz
+Units WindDir = Degrees
+Units WindSpd = m/s
+Units AirTemp = Celcius
+Units RelHumidity = %
+Units AirPressure = hPa
+Units Ramount = mm
+Units Hamount = hits/cm2
+
+'Alias of the public variables
+Alias Slr_Wm2(1) = LP02_Wm2
+Alias Slr_Wm2(2) = LiCor200_Wm2
+Alias Slr_Wm2(3) = Apogee_Wm2
+Alias Slr_MJ(1) = LP02_MJ
+Alias Slr_MJ(2) = LiCor200_MJ
+Alias Slr_MJ(3) = Apogee_MJ
+Alias WXT520(1) = WindDir
+Alias WXT520(2) = WindSpd
+Alias WXT520(3) = AirTemp
+Alias WXT520(4) = RelHumidity
+Alias WXT520(5) = AirPressure
+Alias WXT520(6) = Ramount
+Alias WXT520(7) = Hamount
+Alias s100RealPower(1) = Real_Power
+Alias s100Energy(1) = Energy_Received
+Alias s100Energy(2) = Energy_Delivered
+Alias s100pfF(1) = pf
+Alias s100pfF(2) = Freq
+Alias s100VoltCurr(1) = AB_Voltage
+Alias s100VoltCurr(2) = BC_Voltage
+Alias s100VoltCurr(3) = CA_Voltage
+Alias s100VoltCurr(4) = A_Current
+Alias s100VoltCurr(5) = B_Current
+Alias s100VoltCurr(6) = C_Current
+
+'''''''''''CH200 Alias''''''''''''
+  'Battery voltage: VDC 
+Alias CH200_M0(1)=VBatt   
+  'Current going into, or out of, the battery: Amps 
+Alias CH200_M0(2)=IBatt   
+  'Current going to the load: Amps 
+Alias CH200_M0(3)=ILoad   
+  'Voltage coming into the charger: VDC 
+Alias CH200_M0(4)=V_in_chg   
+  'Current coming into the charger: Amps 
+Alias CH200_M0(5)=I_in_chg   
+  'Charger temperature: Celsius 
+Alias CH200_M0(6)=Chg_TmpC     
+  'Charging state: Cycle, Float, Current Limited, or None 
+Alias CH200_M0(7)=Chg_State   
+  'Charging source: None, AC, or Solar
+Alias CH200_M0(8)=Chg_Source   
+  'Check battery error: 0=normal, 1=check battery 
+Alias CH200_M0(9)=Ck_Batt 
+
+  'Arrays to hold the associated words for the charge state, charge source,  
+  'and check battery values. 
+Dim ChargeStateArr(6) As String 
+Dim ChargeSourceArr(3) As String 
+Dim CheckBatteryArr(2) As String 
+  'Variables to hold the words for charge state, charge source, and check  
+  'battery. 
+Public ChargeState As String 
+Public ChargeSource As String 
+Public CheckBattery As String    
+
+
+'Hourly Weather Data Table
+DataTable(WeatherHourly,True,-1)
+	DataInterval(0,60,Min,10)
+	Average(1,LP02_Wm2,FP2,False)
+	Average(1,LiCor200_Wm2,FP2,False)
+	Average(1,Apogee_Wm2,FP2,False)
+	Maximum(1,Pulse,FP2,False,False)
+  WindVector (1,WindSpd,WindDir,FP2,False,900,0,0)
+  FieldNames("Ws_Mean,Wd_MeanUnitVector,Wd_StdDev")
+  Average (1,AirTemp,FP2,False)
+  Sample (1,RelHumidity,FP2)
+  Sample (1,AirPressure,IEEE4)
+  Totalize (1,Ramount,FP2,False)
+  Totalize (1,Hamount,FP2,False)
+EndTable
+
+'Hourly Battery Data Table
+DataTable (BatteryHour,1,-1) 
+  DataInterval (0,1,Hr,10) 
+  Minimum (6,CH200_M0(),FP2,0,False) 
+  Maximum (6,CH200_M0(),FP2,False,False) 
+  Minimum (1,pTemp(),FP2,0,False) 
+  Maximum (1,pTemp(),FP2,False,False) 
+EndTable 
+
+'Daily Data Table
+DataTable(WeatherDaily,True,-1)
+  DataInterval(0,1440,Min,10)
+  Totalize(1,LP02_MJ,IEEE4,False)
+  Totalize(1,LiCor200_MJ,IEEE4,False)
+  'Totalize(1,Apogee_MJ,IEEE4,False)
+EndTable
+
+'Power Meter Table
+DataTable(PowerMeter, True, -1)
+  DataInterval(0,10,Sec,10)
+  Sample(1,s100RealPower(),FP2)
+  Sample(2,s100Energy(), Long) 
+  'Sample(1,s100Energy(2), Long) 
+  Sample(2,s100pfF(),FP2)
+  'Sample(1,s100pfF(2), FP2)
+  Sample(6,s100VoltCurr(),FP2)
+
+EndTable
+
+'Main Program
+BeginProg
+      'Load arrays with words to associate with the charge state, charge source 
+    'and check battery values from the PS/CH200. 
+  ChargeStateArr(1) = "Regulator Fault" 
+  ChargeStateArr(2) = "No Charge" 
+  ChargeStateArr(3) = "Current Limited" 
+  ChargeStateArr(4) = "Cycle Charging" 
+  ChargeStateArr(5) = "Float Charging" 
+  ChargeStateArr(6) = "Battery Test" 
+   
+  ChargeSourceArr(1) = "None" 
+  ChargeSourceArr(2) = "Solar" 
+  ChargeSourceArr(3) = "Continuous" 
+  CheckBatteryArr(1) = "Normal" 
+  CheckBatteryArr(2) = "Check Battery" 
+  
+  'Open Serial Port on COM1 for Shark Meters
+  SerialOpen (Com1,9600,0,0,10000)
+  
+	Scan(10,Sec,1,0)
+		
+		Battery(BattV)       'Default Datalogger Battery Voltage measurement BattV
+    PanelTemp(pTemp,_60Hz)   'Measure datalogger panel temperature. 
+		
+'''''''''''Thermocouple'''''''''''''''   
+
+TCDiff (Temp,1,mV2_5C,4,TypeT,pTemp,True ,0,250,1.0,0)
+
+'''''''''''LP02 Pyranometer'''''''''''''''
+		'LP02 Pyranometer measurement in Wm-2:
+		
+    'The Multiplier (m) for this example is based upon a sensor calibration (c) of
+    '16 uV/Wm-2, and will be different for each sensor.
+    'Multiplier (m) = 1000/c = 62.5.
+		VoltDiff(LP02_Wm2,1,mV25,1,True,0,_60Hz,62.5,0)
+		
+		'Set negative readings to zero:
+    If LP02_Wm2<0 Then LP02_Wm2=0
+    'Calculate units in MJ, where MJ = m * t * 0.000001. m = LP02_Wm2 from above, and
+    't = 10 (scan interval)
+    LP02_MJ=LP02_Wm2*0.00001
+    
+'''''''''''LiCor200 Pyranometer'''''''''''''''
+    'measure the LI200X
+    VoltDiff(LiCor200_Wm2,1,mV25,2,True,0,_60Hz,-79.94,0) 
+    'set negative values To zero
+    If LiCor200_Wm2<0 Then LiCor200_Wm2=0
+    'convert mV To MJ/m2 For 10 second execution interval
+    'LiCor200_MJ=LiCor200_Wm2*0.002
+    'convert mV To W/m2
+    'LiCor200_Wm2=LiCor200_Wm2
+'''''''''''Apogee Pyranometer'''''''''''''''   
+    VoltDiff(Apogee_Wm2,1,mV250,3,True,0,_60Hz,5,0) 
+    'set negative values To zero
+    If Apogee_Wm2<0 Then Apogee_Wm2=0
+    
+'''''''''''NRG #40 Ananometer'''''''''''''''   
+		'Pulse measured in Hz and converted into MPH by mult. 1.711 & offset 0.78
+		PulseCount(Pulse,1,1,1,1,1.711,0.78)
+		
+'''''''''''Vaisala WXT520'''''''''''''''   
+		'WXT520 connected to SDI12 port C5
+    SDI12Recorder (WXT520(),5,1,"MC!",1.0,0)
+    
+''''''''''''''''Power Meters'''''''''''''''''
+
+    'Get ModBus registers 
+    'Shark 100 ModBus Address 2
+    'Real Power:900-901
+    ModBusMaster(shark100Result(1), Com1, 9600, 2, 3, s100RealPower(), 900, 2, 3, 50,2)
+    'Energy Received:1100-1101 and Delivered:1102-1103
+    ModBusMaster(shark100Result(2), Com1, 9600, 2, 3,s100Energy(), 1100, 2, 3, 50,2)
+    'Power Factor:1024-1025 and Frequency:1026-1027
+    ModBusMaster(shark100Result(3), Com1, 9600, 2, 3,s100pfF(), 1024, 2, 3, 50,2)
+    'Voltage A-B:1006-1007
+    ModBusMaster(shark100Result(4), Com1, 9600, 2, 3,s100VoltCurr(), 1006, 6, 3, 50,2)
+    
+    'Shark 200 ModBus Address 3
+    ModBusMaster(shark200Result(1), Com1, 9600, 3, 3,s200Energy(), 1500, 2, 3, 50,2)
+    
+    
+		'Call Data Tables and Store Data
+		CallTable(WeatherHourly)
+		CallTable(WeatherDaily)
+		CallTable(BatteryHour)
+		CallTable(PowerMeter)
+	NextScan
+	
+  'SlowSequence with SDI-12 measurements 
+  SlowSequence 
+  Scan(30,sec,0,0) 
+    SDI12Recorder (CH200_M0(),7,0,"MC!",1.0,0) 
+      'Array values start with one. Values for charge state start with -1.  
+      'Have to shift the value by two to line it up with the correct words 
+      'in the array. 
+    ChargeState = ChargeStateArr(Chg_State + 2) 
+      'Values for charge source start with zero. Have to shift the value 
+      'by one to line it up with the correct words in the array. 
+    ChargeSource = ChargeSourceArr(Chg_Source + 1) 
+      'Values for check battery start with zero. Have to shift the value 
+      'by one to line it up with the correct words in the array. 
+    CheckBattery = CheckBatteryArr(Ck_Batt + 1)
+     
+ 
+  NextScan 
+  
+EndProg
